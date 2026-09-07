@@ -2,6 +2,8 @@
 
 This prototype is an algorithm test bench for a modest but attribute-rich eyewear catalog. It is not a reconstruction of Lenskart's production system.
 
+The customer-facing search and the system debugger are intentionally presented as one experience. The product shelf shows what the shopper sees; the adjacent trace explains the context, retrieval, filters and ranking that produced it.
+
 ## Dataset
 
 - 600 representative products.
@@ -28,10 +30,25 @@ The public samples retain listing metadata and source URLs. Synthetic products a
 2. Produce a typed query plan: intent, category, hard constraints and soft preferences.
 3. Apply category, price, size, polarization and stock as hard gates.
 4. Retrieve with literal-token and transparent concept-vector matching.
-5. Rank with exact, lexical, semantic, attribute, quality, availability and capped business contributions.
+5. Rank with exact, lexical, semantic, attribute, soft personalization, quality, availability and capped business contributions.
 6. Apply a small top-shelf brand-diversity penalty and deterministic tie-breaking.
 
 This first version intentionally excludes a vector database, collaborative filtering, LambdaMART and a generative LLM in the online ranking path. The catalog size does not justify them yet. The lab creates the measurements needed to decide which additional model, if any, addresses the observed failure.
+
+## Shopper context
+
+The search experience includes five inspectable contexts: a new visitor, a returning self-shopper, a linked family wearer, an exact contact-lens reorder and a gift/unknown wearer. Each context declares which data is available, missing or intentionally ignored.
+
+- Explicit query constraints and verified compatibility are hard rules.
+- Previous sizes, brands, styles and price range are soft ranking signals.
+- The buyer's fit is suppressed for a different or unknown wearer.
+- Prescription data is never inferred and must be verified before a medical purchase.
+
+Changing the context updates the sample query, customer response, evidence ledger and personalization component in the selected-result score.
+
+## Accessing the catalog
+
+Open **Data & evaluation → Catalog explorer** to preview the rows used by search. From there, download either all 576 synthetic records as JSON or the complete 600-record lab as CSV. The source representation remains in `app/search-lab/catalog.ts`; synthetic records are visibly labelled and must not be presented as live Lenskart inventory.
 
 ## Fixed-query evaluation
 

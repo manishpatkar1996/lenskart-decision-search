@@ -13,13 +13,16 @@ async function render() {
   );
 }
 
-test("server-renders the search algorithm lab", async () => {
+test("server-renders the unified search experience", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
-  assert.match(html, /Lenskart Search Lab/);
+  assert.match(html, /Lenskart Decision Search/);
   assert.match(html, /600 products/);
+  assert.match(html, /Who is this search for\?/);
+  assert.match(html, /New visitor/);
+  assert.match(html, /WHAT THE CUSTOMER SEES/);
   assert.match(html, /Keyword baseline/);
   assert.match(html, /Structured hybrid/);
   assert.match(html, /Search debugger/);
@@ -41,4 +44,7 @@ test("catalog and debugger retain experiment provenance", async () => {
   assert.match(lab, /The test is fixed\. Only the algorithm changes\./);
   assert.match(lab, /Eligibility gate/);
   assert.match(lab, /unique attribute combinations/);
+  assert.match(lab, /SHOPPER CONTEXT MODEL/);
+  assert.match(lab, /Download 576 synthetic rows/);
+  assert.match(lab, /Loose concept matches/);
 });

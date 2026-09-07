@@ -2,6 +2,17 @@ import type { CatalogProduct, Category, Size } from "./catalog";
 
 export type Algorithm = "baseline" | "hybrid";
 
+export type ShopperSignals = {
+  id: string;
+  label: string;
+  wearer: string;
+  sizes?: Size[];
+  brands?: string[];
+  styles?: string[];
+  useCases?: string[];
+  priceCeiling?: number;
+};
+
 export type QueryPlan = {
   normalized: string;
   intent: "exact_product" | "product_discovery" | "medical_product" | "unknown";
@@ -19,6 +30,7 @@ export type ScoreBreakdown = {
   lexical: number;
   semantic: number;
   attributes: number;
+  personalization: number;
   quality: number;
   availability: number;
   business: number;
@@ -43,6 +55,7 @@ export type SearchTrace = {
   retrievedCount: number;
   lexicalHits: number;
   semanticHits: number;
+  semanticStrongHits: number;
   elapsedMs: number;
   stages: Array<{name:string;count:number;description:string}>;
   results: SearchResult[];
@@ -135,6 +148,17 @@ function attributeScore(plan:QueryPlan,p:CatalogProduct) {
   return total?hits/total:0;
 }
 
+function personalizationScore(shopper:ShopperSignals|undefined,p:CatalogProduct) {
+  if(!shopper)return 0;
+  let hits=0,total=0;
+  if(shopper.sizes?.length){total++;if(shopper.sizes.includes(p.size))hits++;}
+  if(shopper.brands?.length){total++;if(shopper.brands.includes(p.brand))hits++;}
+  if(shopper.styles?.length){total++;if(shopper.styles.some(style=>p.styles.some(value=>normalize(value).includes(normalize(style)))))hits++;}
+  if(shopper.useCases?.length){total++;if(shopper.useCases.some(use=>[...p.useCases,...p.powerTypes].some(value=>normalize(value).includes(normalize(use)))))hits++;}
+  if(shopper.priceCeiling){total++;if(p.price<=shopper.priceCeiling)hits++;}
+  return total?hits/total:0;
+}
+
 function eligible(plan:QueryPlan,p:CatalogProduct) {
   if(plan.category&&p.category!==plan.category)return false;
   if(plan.hard.maxPrice&&p.price>plan.hard.maxPrice)return false;
@@ -143,20 +167,21 @@ function eligible(plan:QueryPlan,p:CatalogProduct) {
   return p.inventory>0;
 }
 
-function reasons(plan:QueryPlan,p:CatalogProduct,b:ScoreBreakdown) {
+function reasons(plan:QueryPlan,p:CatalogProduct,b:ScoreBreakdown,shopper?:ShopperSignals) {
   const values:string[]=[];
   if(b.exact>0)values.push("Exact SKU match");
   if(plan.hard.maxPrice)values.push(`Within ₹${plan.hard.maxPrice.toLocaleString("en-IN")} budget`);
   if(plan.hard.size)values.push(`${plan.hard.size} size verified`);
   if(b.attributes>.35)values.push("Matches requested attributes");
   if(b.semantic>.35)values.push("Matches the meaning of the request");
+  if(b.personalization>.55&&shopper)values.push(`Matches ${shopper.wearer}'s known preferences`);
   if(p.lightweight&&plan.expandedTerms.includes("lightweight"))values.push("Lightweight construction");
   if(p.deliveryDays===1)values.push("Next-day eligible");
   if(p.rating>=4.8)values.push("Strong customer rating");
   return values.slice(0,3);
 }
 
-export function runSearch(query:string,catalog:CatalogProduct[],algorithm:Algorithm):SearchTrace {
+export function runSearch(query:string,catalog:CatalogProduct[],algorithm:Algorithm,shopper?:ShopperSignals):SearchTrace {
   const plan=understandQuery(query);
   const exactPool=plan.exactSku?catalog.filter(p=>normalize(p.sku)===normalize(plan.exactSku!)):[];
   const pool=exactPool.length?exactPool:algorithm==="hybrid"?catalog.filter(p=>eligible(plan,p)):catalog.filter(p=>p.inventory>0);
@@ -166,18 +191,20 @@ export function runSearch(query:string,catalog:CatalogProduct[],algorithm:Algori
     const lexical=lexicalScore(plan.normalized.split(" ").filter(x=>!stop.has(x)),text);
     const semantic=algorithm==="hybrid"?semanticScore(plan,product):0;
     const baseAttributes=algorithm==="hybrid"?attributeScore(plan,product):0;
+    const personalization=algorithm==="hybrid"?personalizationScore(shopper,product):0;
     const lightweightPreference=algorithm==="hybrid"&&plan.expandedTerms.includes("lightweight")?(product.lightweight ? 0.22 : -0.12):0;
     const attributes=Math.max(0,Math.min(1,baseAttributes+lightweightPreference));
     const quality=(product.rating-4)/1;
     const availability=product.inventory>0?(product.deliveryDays===1?1:.55):0;
     const business=Math.min(.12,product.popularity/1000);
-    const breakdown:ScoreBreakdown={exact,lexical,semantic,attributes,quality,availability,business,diversityPenalty:0};
-    const score=algorithm==="baseline" ? exact*100+lexical*10+quality*.5 : exact*100+lexical*4+semantic*4+attributes*5+quality*.6+availability*.35+business;
+    const breakdown:ScoreBreakdown={exact,lexical,semantic,attributes,personalization,quality,availability,business,diversityPenalty:0};
+    const score=algorithm==="baseline" ? exact*100+lexical*10+quality*.5 : exact*100+lexical*4+semantic*4+attributes*5+personalization*1.5+quality*.6+availability*.35+business;
     return {product,score,beforeRerank:score,movement:0,breakdown,reasons:[]};
   }).filter(x=>x.score>0||plan.normalized.length<2).sort((a,b)=>b.score-a.score||b.product.rating-a.product.rating||a.product.sku.localeCompare(b.product.sku));
 
   const lexicalHits=scored.filter(x=>x.breakdown.lexical>0).length;
   const semanticHits=scored.filter(x=>x.breakdown.semantic>0).length;
+  const semanticStrongHits=scored.filter(x=>x.breakdown.semantic>=.5).length;
   const retrieved=scored.slice(0,algorithm==="baseline"?120:80);
   const brandSeen:Record<string,number>={};
   const reranked=retrieved.map((item,index)=>{
@@ -188,9 +215,9 @@ export function runSearch(query:string,catalog:CatalogProduct[],algorithm:Algori
     return {...item,score,breakdown:{...item.breakdown,diversityPenalty}};
   }).sort((a,b)=>b.score-a.score||a.product.sku.localeCompare(b.product.sku));
   const oldIndex=new Map(retrieved.map((x,i)=>[x.product.id,i]));
-  const results=reranked.map((x,i)=>({...x,movement:(oldIndex.get(x.product.id)??i)-i,reasons:reasons(plan,x.product,x.breakdown)}));
+  const results=reranked.map((x,i)=>({...x,movement:(oldIndex.get(x.product.id)??i)-i,reasons:reasons(plan,x.product,x.breakdown,shopper)}));
   return {
-    algorithm,plan,universeCount:catalog.length,eligibleCount:pool.length,rejectedCount:catalog.length-pool.length,retrievedCount:retrieved.length,lexicalHits,semanticHits,
+    algorithm,plan,universeCount:catalog.length,eligibleCount:pool.length,rejectedCount:catalog.length-pool.length,retrievedCount:retrieved.length,lexicalHits,semanticHits,semanticStrongHits,
     elapsedMs:Number((0.6+catalog.length/180+retrieved.length/220).toFixed(1)),results,
     stages:[
       {name:"Catalog",count:catalog.length,description:"Representative lab catalog"},
