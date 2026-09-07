@@ -37,6 +37,8 @@ test("catalog and debugger retain experiment provenance", async () => {
   ]);
   assert.match(catalog, /sourceKind: "public-sample" \| "synthetic"/);
   assert.match(catalog, /length: 600 - publicSeeds.length/);
+  assert.match(catalog, /descriptionSource:"lab-generated"/);
+  assert.match(catalog, /function createProductCopy/);
   assert.match(engine, /exact_product/);
   assert.match(engine, /diversityPenalty/);
   assert.match(lab, /Evaluation uses explicit synthetic relevance rules/);
@@ -47,4 +49,7 @@ test("catalog and debugger retain experiment provenance", async () => {
   assert.match(lab, /SHOPPER CONTEXT MODEL/);
   assert.match(lab, /Download 576 synthetic rows/);
   assert.match(lab, /Loose concept matches/);
+  assert.match(lab, /Public listing seed; description and enriched attributes are lab-generated/);
+  assert.match(lab, /Generated for this prototype/);
+  assert.match(lab, /description_source/);
 });

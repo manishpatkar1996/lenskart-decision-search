@@ -23,6 +23,9 @@ export type CatalogProduct = {
   useCases: string[];
   faceShapes: string[];
   powerTypes: string[];
+  description: string;
+  highlights: string[];
+  descriptionSource: "lab-generated";
   popularity: number;
   inventory: number;
   deliveryDays: number;
@@ -91,9 +94,30 @@ function seeded(i: number, salt: number, mod: number) {
   return (value >>> 0) % mod;
 }
 
+function createProductCopy(product:Pick<CatalogProduct,"brand"|"category"|"shape"|"color"|"material"|"size"|"frameType"|"styles"|"useCases"|"lightweight"|"polarized">) {
+  if(product.category==="Contact lenses") {
+    const cadence=product.useCases.includes("monthly")?"monthly-replacement":"daily-use";
+    return {
+      description:`A ${product.color.toLowerCase()} ${cadence} contact lens from ${product.brand}, represented in this lab for intent, cadence and product-type matching. Final power, base curve and diameter still require verification.`,
+      highlights:[`${product.material} lens`,product.useCases[0]||"Vision correction","Medical parameters required"],
+    };
+  }
+  const purpose=product.useCases.slice(0,2).join(" and ");
+  const build=product.lightweight?`lightweight ${product.material}`:product.material;
+  return {
+    description:`A ${product.styles[0]} ${product.shape.toLowerCase()} ${product.category.toLowerCase()} frame from ${product.brand}, finished in ${product.color.toLowerCase()} with a ${product.frameType.toLowerCase()} ${build} construction. Modelled as a ${product.size} fit for ${purpose}.`,
+    highlights:[`${product.size} fit`,`${product.material} · ${product.frameType}`,product.polarized?"Polarized lenses":product.lightweight?"Lightweight construction":`${product.styles[0]} styling`],
+  };
+}
+
 function makePublicProduct(seed: PublicSeed, i: number): CatalogProduct {
   const lowerBrand = seed.brand.toLowerCase();
   const lightweight = seed.material === "TR90" || lowerBrand.includes("air") || lowerBrand.includes("hustlr");
+  const size=sizes[i % sizes.length];
+  const style=styleGroups[i % styleGroups.length];
+  const uses=useCases[i % useCases.length];
+  const polarized=seed.category === "Sunglasses" && (lowerBrand.includes("polarized") || i % 3 !== 0);
+  const copy=createProductCopy({brand:seed.brand,category:seed.category,shape:seed.shape,color:seed.color,material:seed.material,size,frameType:"Full Rim",styles:style,useCases:uses,lightweight,polarized});
   return {
     id: `public-${i + 1}`,
     sku: seed.sku,
@@ -103,19 +127,22 @@ function makePublicProduct(seed: PublicSeed, i: number): CatalogProduct {
     category: seed.category,
     gender: genders[i % genders.length],
     shape: seed.shape,
-    size: sizes[i % sizes.length],
+    size,
     color: seed.color,
     material: seed.material,
     frameType: "Full Rim",
     price: seed.price,
     oldPrice: seed.oldPrice,
     rating: seed.rating,
-    polarized: seed.category === "Sunglasses" && (lowerBrand.includes("polarized") || i % 3 !== 0),
+    polarized,
     lightweight,
-    styles: styleGroups[i % styleGroups.length],
-    useCases: useCases[i % useCases.length],
+    styles: style,
+    useCases: uses,
     faceShapes: faceShapes[i % faceShapes.length],
     powerTypes: seed.category === "Eyeglasses" ? ["Single Vision", "Zero Power", i % 3 === 0 ? "Progressive" : "Reading"] : ["Zero Power"],
+    description:copy.description,
+    highlights:copy.highlights,
+    descriptionSource:"lab-generated",
     popularity: 72 + (i * 7) % 27,
     inventory: 2 + (i * 11) % 34,
     deliveryDays: 1 + (i % 4),
@@ -136,6 +163,10 @@ function makeSyntheticProduct(i: number): CatalogProduct {
   const style = styleGroups[seeded(i, 6, styleGroups.length)];
   const uses = contact ? [i % 2 ? "monthly" : "daily", "vision correction"] : useCases[seeded(i, 7, useCases.length)];
   const basePrice = contact ? [189, 319, 599, 999][i % 4] : [800, 1000, 1200, 1500, 2000, 3000, 4000, 5000][seeded(i, 8, 8)];
+  const frameType=contact ? "Lens" : i % 7 === 0 ? "Half Rim" : i % 11 === 0 ? "Rimless" : "Full Rim";
+  const polarized=category === "Sunglasses" && i % 4 !== 0;
+  const lightweight=material === "TR90" || material === "Titanium" || brand === "Lenskart Air";
+  const copy=createProductCopy({brand,category,shape,color,material,size:contact?"M":size,frameType,styles:style,useCases:uses,lightweight,polarized});
   const sku = contact ? `AQ-CL-${String(i - 545).padStart(3, "0")}` : `${brand.split(" ").map(x=>x[0]).join("")}-${category === "Sunglasses" ? "S" : "E"}${String(20000 + i).padStart(5, "0")}-C${1 + i % 9}`;
   return {
     id: `synthetic-${i + 1}`,
@@ -149,16 +180,19 @@ function makeSyntheticProduct(i: number): CatalogProduct {
     size: contact ? "M" : size,
     color,
     material,
-    frameType: contact ? "Lens" : i % 7 === 0 ? "Half Rim" : i % 11 === 0 ? "Rimless" : "Full Rim",
+    frameType,
     price: basePrice,
     oldPrice: basePrice >= 800 ? Math.round(basePrice * 1.25 / 100) * 100 : undefined,
     rating: Number((4.1 + (seeded(i, 10, 17) / 20)).toFixed(2)),
-    polarized: category === "Sunglasses" && i % 4 !== 0,
-    lightweight: material === "TR90" || material === "Titanium" || brand === "Lenskart Air",
+    polarized,
+    lightweight,
     styles: style,
     useCases: uses,
     faceShapes: contact ? [] : faceShapes[seeded(i, 11, faceShapes.length)],
     powerTypes: contact ? [uses[0], "Spherical", i % 5 === 0 ? "Toric" : "Standard"] : category === "Eyeglasses" ? ["Single Vision", i % 5 === 0 ? "Progressive" : "Zero Power", i % 4 === 0 ? "Blue Filter" : "Reading"] : ["Zero Power", i % 6 === 0 ? "Power Sun" : "Plano"],
+    description:copy.description,
+    highlights:copy.highlights,
+    descriptionSource:"lab-generated",
     popularity: 30 + seeded(i, 12, 70),
     inventory: seeded(i, 13, 38),
     deliveryDays: 1 + seeded(i, 14, 6),

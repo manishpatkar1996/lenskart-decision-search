@@ -121,7 +121,7 @@ export function understandQuery(query:string): QueryPlan {
 }
 
 function productText(p:CatalogProduct) {
-  return normalize([p.sku,p.title,p.brand,p.collection,p.category,p.gender,p.shape,p.size,p.color,p.material,p.frameType,...p.styles,...p.useCases,...p.faceShapes,...p.powerTypes].join(" "));
+  return normalize([p.sku,p.title,p.brand,p.collection,p.category,p.gender,p.shape,p.size,p.color,p.material,p.frameType,p.description,...p.highlights,...p.styles,...p.useCases,...p.faceShapes,...p.powerTypes].join(" "));
 }
 
 function lexicalScore(tokens:string[], text:string) {

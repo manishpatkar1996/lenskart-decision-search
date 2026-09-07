@@ -13,7 +13,9 @@ The customer-facing search and the system debugger are intentionally presented a
 - Public-page observations at capture time: 608 sunglasses and 1,582 eyeglasses.
 - 20 fixed evaluation queries covering exact SKU, attributes, constraints, semantic style, Hinglish, proxy purchase and contact-lens intent.
 
-The public samples retain listing metadata and source URLs. Synthetic products are generated from a controlled eyewear schema and must never be presented as real Lenskart inventory.
+The public samples retain listing metadata and source URLs. Because the public product-list pages did not provide complete descriptive copy, every record now also carries a product-specific description, highlights and supporting search attributes generated from the controlled lab schema. These fields are marked `descriptionSource: "lab-generated"`; they are prototype data, not claims copied from Lenskart product pages. Synthetic products are generated from the same controlled eyewear schema and must never be presented as real Lenskart inventory.
+
+For the 24 public seeds, captured fields are SKU, brand, category, shape, colour, material, price, rating, image and source link. Generated enrichment includes description, highlights, fit, collection, styles, use cases, face-shape guidance, power types, inventory and delivery. The interface and downloads preserve that distinction.
 
 ## Algorithms
 
@@ -48,7 +50,7 @@ Changing the context updates the sample query, customer response, evidence ledge
 
 ## Accessing the catalog
 
-Open **Data & evaluation → Catalog explorer** to preview the rows used by search. From there, download either all 576 synthetic records as JSON or the complete 600-record lab as CSV. The source representation remains in `app/search-lab/catalog.ts`; synthetic records are visibly labelled and must not be presented as live Lenskart inventory.
+Open **Data & evaluation → Catalog explorer** to preview the rows used by search, including descriptions, highlights and provenance. From there, download either all 576 synthetic records as JSON or the complete 600-record lab as CSV. The CSV includes the full enrichment schema and `description_source`. The source representation remains in `app/search-lab/catalog.ts`; synthetic records and generated public-seed fields are visibly labelled and must not be presented as live Lenskart inventory.
 
 ## Fixed-query evaluation
 
