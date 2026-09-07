@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Lenskart decision-search working conversation" />
+  <title>Lenskart Decision Search</title>
+  <style>
+    :root {
+      --ink: #101322;
+      --muted: #626779;
+      --paper: #f5f2e9;
+      --white: #fffdf8;
+      --line: #d8d5c9;
+      --navy: #11183d;
+      --teal: #08745f;
+      --mint: #c8f04a;
+      --coral: #f06d52;
+      --sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      --serif: Iowan Old Style, "Palatino Linotype", Georgia, serif;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-snap-type: y mandatory; }
+    body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--sans); }
+    button, a { font: inherit; }
+    code, .mono { font-family: var(--mono); }
+
+    .slide {
+      min-height: 100svh;
+      scroll-snap-align: start;
+      scroll-snap-stop: always;
+      display: grid;
+      align-items: center;
+      padding: clamp(28px, 5vw, 72px);
+      border-bottom: 1px solid var(--line);
+      overflow: hidden;
+      position: relative;
+    }
+    .stage {
+      width: min(1160px, 100%);
+      margin: 0 auto;
+    }
+    .eyebrow {
+      margin: 0 0 16px;
+      color: var(--teal);
+      font-size: clamp(11px, 1.2vw, 14px);
+      font-weight: 750;
+      letter-spacing: .13em;
+      text-transform: uppercase;
+    }
+    h1, h2, h3, p { margin-top: 0; }
+    h1, h2 {
+      font-family: var(--serif);
+      letter-spacing: -.035em;
+      line-height: .98;
+    }
+    h1 { max-width: 980px; margin-bottom: 28px; font-size: clamp(46px, 7.2vw, 92px); }
+    h2 { margin-bottom: 24px; font-size: clamp(38px, 5vw, 66px); }
+    h3 { margin-bottom: 8px; font-size: clamp(18px, 2vw, 26px); }
+    .lede { max-width: 880px; font-size: clamp(19px, 2vw, 29px); line-height: 1.34; }
+    .note { color: var(--muted); font-size: clamp(13px, 1.25vw, 16px); line-height: 1.45; }
+    .accent { color: var(--teal); }
+
+    .query {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      border: 1px solid var(--line);
+      background: var(--white);
+      font-family: var(--mono);
+      font-size: clamp(13px, 1.4vw, 18px);
+    }
+    .query::before { content: "⌕"; color: var(--teal); font: 700 24px/1 var(--sans); }
+
+    .grid2, .grid3 { display: grid; gap: clamp(14px, 2vw, 24px); }
+    .grid2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .card {
+      padding: clamp(18px, 2.2vw, 30px);
+      border: 1px solid var(--line);
+      background: var(--white);
+    }
+    .card-label {
+      display: block;
+      margin-bottom: 12px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+    .card p:last-child { margin-bottom: 0; }
+    .fail { border-top: 4px solid var(--coral); }
+    .works { border-top: 4px solid var(--teal); }
+
+    .pipeline {
+      display: grid;
+      grid-template-columns: 1fr;
+      max-width: 820px;
+      margin-top: 28px;
+    }
+    .pipe {
+      display: grid;
+      grid-template-columns: 72px 1fr auto;
+      align-items: center;
+      gap: 22px;
+      min-height: 86px;
+      padding: 14px 22px;
+      border: 1px solid var(--line);
+      background: var(--white);
+    }
+    .pipe + .pipe { border-top: 0; }
+    .pipe-num { color: var(--teal); font: 700 14px/1 var(--mono); }
+    .pipe strong { font-size: clamp(19px, 2vw, 27px); }
+    .pipe code { color: var(--muted); font-size: clamp(11px, 1.2vw, 14px); }
+    .pipe:not(:last-child)::after {
+      content: "↓";
+      position: absolute;
+      left: 50%;
+      transform: translate(-50%, 50px);
+      z-index: 2;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--navy);
+      color: white;
+      text-align: center;
+      line-height: 26px;
+    }
+    .pipe { position: relative; }
+
+    .ds-layout {
+      display: grid;
+      grid-template-columns: minmax(0, .75fr) minmax(0, 1.25fr);
+      gap: clamp(24px, 5vw, 70px);
+      align-items: center;
+    }
+    .steps {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 30px;
+    }
+    .steps span {
+      padding: 8px 12px;
+      border-left: 3px solid var(--line);
+      color: #9a9da9;
+      font-size: 12px;
+      font-weight: 750;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+    .steps .on { border-color: var(--teal); color: var(--ink); }
+    .code-card {
+      min-height: 390px;
+      padding: clamp(24px, 3vw, 40px);
+      background: var(--navy);
+      color: #f4f1e7;
+      box-shadow: 18px 18px 0 rgba(8, 116, 95, .16);
+      font: clamp(13px, 1.5vw, 19px)/1.62 var(--mono);
+      white-space: pre-wrap;
+    }
+    .code-card .key { color: #87e4d0; }
+    .code-card .comment { color: #9aa5c5; }
+    .code-card .hi { color: var(--mint); }
+
+    .funnel {
+      display: grid;
+      gap: 8px;
+      align-items: center;
+      margin-top: 22px;
+    }
+    .funnel div {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      min-height: 48px;
+      padding: 9px 16px;
+      background: rgba(200, 240, 74, .1);
+      border: 1px solid rgba(200, 240, 74, .45);
+    }
+    .funnel div:nth-child(1) { width: 100%; }
+    .funnel div:nth-child(2) { width: 76%; }
+    .funnel div:nth-child(3) { width: 52%; }
+    .funnel div:nth-child(4) { width: 28%; }
+
+    .outcome {
+      display: flex;
+      flex-direction: column;
+      min-height: 310px;
+    }
+    .outcome .query { margin-bottom: 20px; padding: 9px 11px; font-size: 12px; }
+    .outcome h3 { font-family: var(--serif); font-size: clamp(24px, 2.6vw, 34px); }
+    .outcome .result { margin-top: auto; padding-top: 18px; border-top: 1px solid var(--line); }
+    .result b { color: var(--teal); }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip {
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: #e7f2ee;
+      color: #145d50;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .trace {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+      margin: 32px 0 24px;
+    }
+    .trace div {
+      position: relative;
+      min-height: 110px;
+      padding: 18px 14px;
+      background: var(--navy);
+      color: white;
+    }
+    .trace div:not(:last-child)::after {
+      content: "→";
+      position: absolute;
+      right: -14px;
+      top: 43px;
+      z-index: 2;
+      color: var(--mint);
+      font-weight: 900;
+    }
+    .trace small { display: block; color: #9aa5c5; margin-bottom: 10px; }
+    .trace code { font-size: clamp(10px, 1vw, 12px); }
+
+    .metric {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .metric b { min-width: 150px; color: var(--teal); font-family: var(--mono); }
+    .formula {
+      margin: 24px 0;
+      padding: clamp(18px, 2.2vw, 30px);
+      background: var(--navy);
+      color: white;
+      font: clamp(14px, 1.55vw, 20px)/1.5 var(--mono);
+    }
+
+    .chrome {
+      position: fixed;
+      z-index: 10;
+      right: 18px;
+      bottom: 18px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px;
+      border: 1px solid rgba(16, 19, 34, .12);
+      background: rgba(255, 253, 248, .9);
+      backdrop-filter: blur(12px);
+    }
+    .chrome button {
+      width: 36px;
+      height: 36px;
+      border: 0;
+      background: var(--navy);
+      color: white;
+      cursor: pointer;
+    }
+    .chrome button:disabled { opacity: .28; cursor: default; }
+    #counter { min-width: 42px; text-align: center; font: 12px/1 var(--mono); }
+    .progress { position: fixed; z-index: 10; top: 0; left: 0; height: 4px; background: var(--teal); transition: width .2s; }
+
+    @media (max-width: 480px) {
+      html { scroll-snap-type: y proximity; }
+      .slide { min-height: 100svh; padding: 48px 22px 72px; overflow: visible; }
+      .grid2, .grid3, .ds-layout { grid-template-columns: 1fr; }
+      .grid3 { gap: 10px; }
+      .card { padding: 16px; }
+      .pipe { grid-template-columns: 42px 1fr; gap: 10px; min-height: 70px; }
+      .pipe code { display: none; }
+      .code-card { min-height: auto; box-shadow: 8px 8px 0 rgba(8, 116, 95, .16); }
+      .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; margin-bottom: 8px; }
+      .steps span { padding: 7px 4px; border-left: 0; border-top: 3px solid var(--line); font-size: 9px; }
+      .trace { grid-template-columns: 1fr; }
+      .trace div { min-height: auto; }
+      .trace div:not(:last-child)::after { content: "↓"; right: 50%; top: auto; bottom: -16px; }
+      .outcome { min-height: auto; }
+      .outcome .result { margin-top: 20px; }
+      .chrome { right: 10px; bottom: 10px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+    }
+  </style>
+</head>
+<body>
+  <div class="progress" id="progress"></div>
+
+  <main>
+    <section class="slide" id="slide-1">
+      <div class="stage">
+        <p class="eyebrow">Working conversation · September 2026</p>
+        <h1>Search works when they already speak Lenskart.</h1>
+        <p class="lede">It breaks when the customer brings a <span class="accent">decision</span>, a relationship, a prescription or a service—not catalogue language.</p>
+        <p class="note">B, voice, AR, profiles and stores already exist. The missing layer is a shared, typed decision state.</p>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-2">
+      <div class="stage">
+        <p class="eyebrow">01 · The problem, once</p>
+        <h2>Good at lookup. Weak at intent.</h2>
+        <div class="grid2">
+          <article class="card works">
+            <span class="card-label">Works</span>
+            <h3><code>Lenskart Air Pop</code></h3>
+            <p>Known collection. Exact contact lens. Catalogue language.</p>
+          </article>
+          <article class="card fail">
+            <span class="card-label">Fails</span>
+            <p><code>book eye test near me</code> → yearly lens</p>
+            <p><code>glasses for old people</code> → empty dump</p>
+            <p><code>papa… under 1500</code> → kids + ₹2,000</p>
+          </article>
+        </div>
+        <div class="grid3" style="margin-top: 18px">
+          <article class="card"><span class="card-label">Already there</span><p>B / voice, AR, profiles, ~2k stores, home test.</p></article>
+          <article class="card"><span class="card-label">Catalogue scale</span><p>~1,600 eyeglasses + ~600 sunglasses. Not an embedding-scale problem.</p></article>
+          <article class="card"><span class="card-label">Brief math</span><p>400 search sessions / 1,000. ~140 end without engagement. Do not add query-level zero-results to session-level failure.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-3">
+      <div class="stage">
+        <p class="eyebrow">02 · The system</p>
+        <h2>One query. Four DS decisions.</h2>
+        <div class="query">papa ke liye halka chashma under 1500</div>
+        <div class="pipeline">
+          <div class="pipe"><span class="pipe-num">01 / QU</span><strong>Understand</strong><code>q → QueryPlan + confidence[]</code></div>
+          <div class="pipe"><span class="pipe-num">02 / CR</span><strong>Route + gate</strong><code>eligible = {x | hard(x) = true}</code></div>
+          <div class="pipe"><span class="pipe-num">03 / RK</span><strong>Rank only eligible</strong><code>arg sort score(x), x ∈ eligible</code></div>
+          <div class="pipe"><span class="pipe-num">04 / RT</span><strong>Compose outcome</strong><code>product | question | education | service</code></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-4">
+      <div class="stage ds-layout">
+        <div>
+          <p class="eyebrow">03 · Query understanding · QU</p>
+          <div class="steps"><span class="on">01 Understand</span><span>02 Route + gate</span><span>03 Rank eligible</span><span>04 Compose</span></div>
+          <h2>Parse into state, not prose.</h2>
+          <p>Rules extract SKU, ₹, power and services. A language model may map Hinglish into the schema. It never invents numeric constraints.</p>
+          <p class="note">Unknown does not mean false. It means preserve optionality.</p>
+        </div>
+        <div class="code-card"><span class="key">query</span>      "papa ke liye halka
+           chashma under 1500"
+
+<span class="key">intent</span>     product_discovery
+<span class="key">shopper</span>    father  <span class="comment"># proxy</span>
+<span class="key">object</span>     eyeglasses
+<span class="key">hard</span>       maxPrice = <span class="hi">1500</span>
+           audience = <span class="hi">adult</span>
+<span class="key">soft</span>       lightweight
+<span class="key">unknowns</span>   [size, Rx]
+
+<span class="key">confidence</span> { intent: .88,
+             object: .96,
+             constraint: .92 }</div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-5">
+      <div class="stage ds-layout">
+        <div>
+          <p class="eyebrow">04 · Object routing + eligibility · CR</p>
+          <div class="steps"><span>01 Understand</span><span class="on">02 Route + gate</span><span>03 Rank eligible</span><span>04 Compose</span></div>
+          <h2>Similarity cannot restore an ineligible row.</h2>
+          <p>Choose the corpus first. Then fail closed on category, shopper, price, fit, power and stock.</p>
+          <p class="note">Explicit constraints are predicates—not weights a strong brand or margin score can compensate for.</p>
+        </div>
+        <div class="code-card"><span class="key">route</span>  frames
+<span class="key">drop</span>   service · sunglasses
+       contacts · kids
+       price &gt; 1500 · OOS
+
+<div class="funnel"><div><span>universe</span><b>608</b></div><div><span>product route</span><b>602</b></div><div><span>eligible</span><b>~218</b></div><div><span>shown</span><b>12</b></div></div>
+
+<span class="hi">constraint_survival = 1.0</span></div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-6">
+      <div class="stage ds-layout">
+        <div>
+          <p class="eyebrow">05 · Retrieve + rank · RK</p>
+          <div class="steps"><span>01 Understand</span><span>02 Route + gate</span><span class="on">03 Rank eligible</span><span>04 Compose</span></div>
+          <h2>Rank is downstream of correctness.</h2>
+          <p>Exact entity path first. Otherwise score the eligible set using lexical match, attributes, soft profile, quality and a capped business term.</p>
+          <p class="note">No vector database or LambdaMART until ranking—not understanding or routing—is the measured miss.</p>
+        </div>
+        <div class="code-card"><span class="key">score(x)</span> =
+  0.20 lexical
++ 1.00 attributes
++ 0.12 soft_profile
++ 0.08 quality
++ <span class="comment">capped_business</span>
+
+<span class="hi">#1 LA-E15417-C20</span>
+adult · lightweight · ₹1500
+
+<span class="key">retrieved</span> 80
+<span class="key">shown</span>     12
+
+business ≤ relevance_band</div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-7">
+      <div class="stage">
+        <p class="eyebrow">06 · Response composition · RT</p>
+        <h2>Search can finish three different jobs.</h2>
+        <div class="grid3">
+          <article class="card outcome">
+            <div class="query">papa… halka… under 1500</div>
+            <span class="card-label">Outcome 01</span>
+            <h3>Eligible shelf</h3>
+            <p>Show value immediately. Unknown size does not block a useful first shelf.</p>
+            <div class="result"><div class="chips"><span class="chip">Dad</span><span class="chip">Adult</span><span class="chip">≤ ₹1500</span><span class="chip">Lightweight</span></div></div>
+          </article>
+          <article class="card outcome">
+            <div class="query">glasses for old people</div>
+            <span class="card-label">Outcome 02</span>
+            <h3>One useful question</h3>
+            <p>“What do they need help seeing?”</p>
+            <div class="result"><b>Reading · Distance · Both · Not sure</b><p class="note">Then show branch-specific education.</p></div>
+          </article>
+          <article class="card outcome">
+            <div class="query">book eye test near me</div>
+            <span class="card-label">Outcome 03</span>
+            <h3>Service object</h3>
+            <p>No frame shelf. Return stores, available slots and the booking action.</p>
+            <div class="result"><b>Book eye test →</b><p class="note">The service is the result.</p></div>
+          </article>
+        </div>
+        <p class="note" style="margin-top: 18px">No permanently reserved “rich” sections. The QueryPlan earns each module.</p>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-8">
+      <div class="stage">
+        <p class="eyebrow">07 · On the site</p>
+        <h2>The lab exposes the same objects the customer experience consumes.</h2>
+        <div class="trace">
+          <div><small>Input</small><code>query + wearer + history</code></div>
+          <div><small>QueryPlan</small><code>hard[] soft[] unknowns[]</code></div>
+          <div><small>Eligibility</small><code>608 → 218</code></div>
+          <div><small>Selected</small><code>ScoreBreakdown</code></div>
+          <div><small>Response</small><code>products | question | service</code></div>
+        </div>
+        <div class="grid2">
+          <article class="card"><span class="card-label">Customer</span><p>Search, B and voice write the same state. AR, store and checkout continue it. No debugger is exposed.</p></article>
+          <article class="card"><span class="card-label">SearchTrace · local lab</span><p><code>understandQuery → eligible() → score → planResponse</code></p><p class="note">Synthetic lab catalogue; not production inventory or a claim of ranking lift.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-9">
+      <div class="stage">
+        <p class="eyebrow">08 · Impact contract</p>
+        <h2>Prove the stage before scaling the model.</h2>
+        <div class="formula">Δ completed tasks = sessions × search adoption × addressable mix × baseline completion × experimental lift</div>
+        <div class="grid2">
+          <div>
+            <div class="metric"><b>Primary</b><span>buy · reorder · eye-test completion</span></div>
+            <div class="metric"><b>Decision quality</b><span>constraint survival → 1 · response-type accuracy</span></div>
+            <div class="metric"><b>Guardrails</b><span>exact MRR · latency · zero wrong-shopper / medical swap</span></div>
+          </div>
+          <article class="card">
+            <span class="card-label">What may be wrong</span>
+            <p>Query understanding may not be the production miss. Browse defaults, merchandising or ranking may dominate. The live query mix is unknown.</p>
+            <span class="card-label" style="margin-top: 22px">First move</span>
+            <p>Instrument session → query → impression → engage → configure → buy/service. Shadow QueryPlans, audit hard constraints, then run an intent-sliced experiment.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <nav class="chrome" aria-label="Slide navigation">
+    <button id="previous" type="button" aria-label="Previous slide">↑</button>
+    <span id="counter" aria-live="polite">1 / 9</span>
+    <button id="next" type="button" aria-label="Next slide">↓</button>
+  </nav>
+
+  <script>
+    const slides = [...document.querySelectorAll(".slide")];
+    const previous = document.getElementById("previous");
+    const next = document.getElementById("next");
+    const counter = document.getElementById("counter");
+    const progress = document.getElementById("progress");
+    let current = 0;
+
+    function goTo(index, behavior = "smooth") {
+      current = Math.max(0, Math.min(index, slides.length - 1));
+      slides[current].scrollIntoView({ behavior, block: "start" });
+      history.replaceState(null, "", `#slide-${current + 1}`);
+      renderChrome();
+    }
+
+    function renderChrome() {
+      counter.textContent = `${current + 1} / ${slides.length}`;
+      previous.disabled = current === 0;
+      next.disabled = current === slides.length - 1;
+      progress.style.width = `${((current + 1) / slides.length) * 100}%`;
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+      const visible = entries
+        .filter((entry) => entry.isIntersecting)
+        .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+      if (!visible) return;
+      current = slides.indexOf(visible.target);
+      renderChrome();
+    }, { threshold: [0.55, 0.75] });
+
+    slides.forEach((slide) => observer.observe(slide));
+    previous.addEventListener("click", () => goTo(current - 1));
+    next.addEventListener("click", () => goTo(current + 1));
+    document.addEventListener("keydown", (event) => {
+      if (["ArrowDown", "ArrowRight", "PageDown", " "].includes(event.key)) {
+        event.preventDefault();
+        goTo(current + 1);
+      }
+      if (["ArrowUp", "ArrowLeft", "PageUp"].includes(event.key)) {
+        event.preventDefault();
+        goTo(current - 1);
+      }
+      if (event.key === "Home") goTo(0);
+      if (event.key === "End") goTo(slides.length - 1);
+    });
+
+    const requested = Number(location.hash.match(/slide-(\d+)/)?.[1]);
+    if (requested) requestAnimationFrame(() => goTo(requested - 1, "auto"));
+    else renderChrome();
+  </script>
+</body>
+</html>
