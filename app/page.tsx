@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
+import SearchLab from "./search-lab/SearchLab";
 
 type Scenario = "style" | "reorder" | "dad";
 type Product = { id:string; brand:string; name:string; price:number; oldPrice?:number; color:string; shape:string; size:string; material:string; tags:string[]; match:string; tone:string };
@@ -40,10 +41,10 @@ function ReorderCard() { return <section className="reorder-card">
   <div className="reorder-main"><div className="verified"><Icon name="check" size={15}/> Exact product and prescription match</div><p className="brand">Aqualens</p><h3>24H Monthly Disposable</h3><p className="muted">Your last order · 12 June 2026</p>
     <div className="eye-grid"><div><b>Right eye</b><span>−2.50 SPH</span></div><div><b>Left eye</b><span>−2.25 SPH</span></div><div><b>Base curve</b><span>8.6</span></div><div><b>Diameter</b><span>14.2</span></div></div>
     <div className="safe-note"><Icon name="check" size={17}/><span>Prescription is valid. We never substitute a medically different lens because it “looks similar.”</span></div></div>
-  <div className="reorder-buy"><span>Arrives tomorrow</span><h3>₹1,198</h3><p>Gold price · pack of 2</p><button>Reorder exact lenses <Icon name="arrow" size={17}/></button><a>Change quantity or power</a></div>
+  <div className="reorder-buy"><span>Arrives tomorrow</span><h3>₹1,198</h3><p>Gold price · pack of 2</p><button>Reorder exact lenses <Icon name="arrow" size={17}/></button><button className="reorder-change">Change quantity or power</button></div>
 </section>; }
 
-export default function Home() {
+function ExperiencePrototype() {
   const [scenario,setScenario] = useState<Scenario>("style"); const [query,setQuery] = useState(copy.style.query); const [preference,setPreference] = useState("Classic"); const [size,setSize] = useState("Medium"); const [inspector,setInspector] = useState(true); const [voice,setVoice] = useState(false); const [why,setWhy] = useState<string|null>(null); const [shortlist,setShortlist] = useState<string[]>([]);
   const ranked = useMemo(() => { const pool=scenario==="dad"?products.filter(p=>p.tags.includes("Dad")):products.filter(p=>!p.tags.includes("Dad")); return [...pool].sort((a,b)=>{ const score=(p:Product)=>(p.tags.includes(preference)?5:0)+(p.tags.includes(size)?3:0)+(preference==="Less expensive"?Math.round((4000-p.price)/400):0); return score(b)-score(a); }); },[scenario,preference,size]);
   function choose(next:Scenario){setScenario(next);setQuery(copy[next].query);setWhy(null);setPreference(next==="dad"?"Reading":"Classic");setSize("Medium")}
@@ -51,7 +52,7 @@ export default function Home() {
   const choices=scenario==="dad"?["Reading / phone","Far away","Both","Not sure — eye test"]:["Classic","Lightweight","Bold","Less expensive"]; const chips=scenario==="dad"?["Reading","Progressive","Lightweight","Classic"]:["Classic","Lightweight","Bold","Less expensive"]; const title=copy[scenario];
   return <main>
     <div className="announcement">Free eye test at 2,500+ stores <span>•</span> Next-day delivery in select cities</div>
-    <header className="topbar"><a className="logo" href="#"><span className="logo-mark">∞</span>lenskart</a><nav><a>Eyeglasses</a><a>Sunglasses</a><a>Contacts</a><a>Special power</a><a>Stores</a></nav><div className="top-actions"><button aria-label="Wishlist"><Icon name="heart"/></button><button aria-label="Bag"><Icon name="bag"/></button><button aria-label="Profile"><Icon name="user"/></button></div></header>
+    <header className="topbar"><button className="logo" type="button"><span className="logo-mark">∞</span>lenskart</button><nav><button>Eyeglasses</button><button>Sunglasses</button><button>Contacts</button><button>Special power</button><button>Stores</button></nav><div className="top-actions"><button aria-label="Wishlist"><Icon name="heart"/></button><button aria-label="Bag"><Icon name="bag"/></button><button aria-label="Profile"><Icon name="user"/></button></div></header>
     <section className="hero"><div className="hero-copy"><p className="eyebrow"><Icon name="spark" size={17}/> {title.eyebrow}</p><h1>{title.title}</h1><p className="hero-sub">Describe the outcome in your own words. Search will translate it into products, explain trade-offs, and ask only when the answer changes.</p></div><div className="hero-art"><div className="portrait"><span className="face"/><FrameArt shape="Square" tone="ink"/></div><div className="float-card"><small>Decision search</small><b>Goal → constraints → best next step</b></div></div></section>
     <section className="search-stage"><div className="journey-header"><div><p>COMPLETE INTERACTIVE PROTOTYPE</p><h2>Explore all three search journeys</h2></div><span>Choose a journey below—the customer experience and system view update together.</span></div><div className="scenario-tabs" role="tablist"><button className={scenario==="style"?"active":""} onClick={()=>choose("style")}><span>01</span><div><b>I need help choosing</b><small>Style and fit discovery</small></div></button><button className={scenario==="reorder"?"active":""} onClick={()=>choose("reorder")}><span>02</span><div><b>Reorder exact lenses</b><small>Safety-critical exact match</small></div></button><button className={scenario==="dad"?"active":""} onClick={()=>choose("dad")}><span>03</span><div><b>Shopping for Dad</b><small>Proxy purchase and education</small></div></button></div>
       <div className="search-shell"><Icon name="search" size={25}/><input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()} placeholder={title.placeholder}/><button className={voice?"voice active":"voice"} onClick={()=>setVoice(!voice)} aria-label="Voice search"><Icon name="mic"/></button><button className="camera" aria-label="Search by image"><Icon name="camera"/></button><button className="search-button" onClick={submit}>Search</button></div>
@@ -68,4 +69,15 @@ export default function Home() {
     {inspector&&<aside className="inspector"><div className="inspector-head"><span><Icon name="layers" size={18}/></span><div><p>LIVE SYSTEM VIEW</p><h2>Why these results?</h2></div></div><Trace n="01" title="Typed understanding" body={scenario==="style"?"Goal: style discovery · Subject: self · Constraints: classic, suitable":scenario==="dad"?"Goal: proxy purchase · Subject: Dad · Need: unresolved vision use":"Goal: exact reorder · Medical parameters must match"}/><div className="confidence-wrap"><p>CONFIDENCE IS A VECTOR</p><Confidence label="Product type" value={scenario==="dad"?88:98}/><Confidence label="Vision need" value={scenario==="style"?34:94}/><Confidence label="Style / fit" value={scenario==="reorder"?22:72}/></div><Trace n="02" title="Parallel retrieval" body={scenario==="reorder"?"Order history + exact SKU + prescription validity":"Lexical match + semantic intent + catalogue attributes + profile evidence"}/><Trace n="03" title="Response policy" body={scenario==="reorder"?"Execute when identity and parameters are verified":"Ask one question only when its expected value exceeds friction cost"} accent/><Trace n="04" title="Constraint survival audit" body={scenario==="dad"?"Do not infer prescription from age. Preserve wearer, need and fit through ranking.":scenario==="reorder"?"Exact-match retrieval outranks semantic similarity. No unsafe substitution.":"Preserve classic, medium fit and price preference through reranking."}/><div className="formula"><span>Final score</span><code>relevance + preference + fit + availability − risk</code></div><div className="inspector-foot"><Icon name="check" size={17}/><span>Every explanation comes from evidence used by ranking.</span></div></aside>}
     </div>
   </main>;
+}
+
+export default function Home() {
+  const [surface,setSurface]=useState<"lab"|"experience">("lab");
+  return <>
+    <div className="prototype-surface-switch" role="navigation" aria-label="Prototype sections">
+      <button className={surface==="lab"?"active":""} onClick={()=>setSurface("lab")}>Search algorithm lab</button>
+      <button className={surface==="experience"?"active":""} onClick={()=>setSurface("experience")}>Customer experience</button>
+    </div>
+    {surface==="lab"?<SearchLab/>:<ExperiencePrototype/>}
+  </>;
 }
