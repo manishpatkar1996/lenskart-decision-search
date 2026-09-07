@@ -46,6 +46,19 @@ export type SearchResult = {
   reasons: string[];
 };
 
+export type ResponseOption = {
+  label: string;
+  append?: string;
+  action?: "size-guide" | "eye-test" | "prescription-check";
+};
+
+export type ResponsePlan = {
+  types: Array<"products" | "question" | "education" | "service">;
+  question?: {id:string;prompt:string;reason:string;options:ResponseOption[]};
+  education?: {title:string;copy:string;action:string};
+  service?: {title:string;copy:string;action:string};
+};
+
 export type SearchTrace = {
   algorithm: Algorithm;
   plan: QueryPlan;
@@ -59,13 +72,14 @@ export type SearchTrace = {
   elapsedMs: number;
   stages: Array<{name:string;count:number;description:string}>;
   results: SearchResult[];
+  response: ResponsePlan;
 };
 
 const phraseMap: Array<[string, string[]]> = [
   ["chashma", ["eyeglasses"]], ["specs", ["eyeglasses"]], ["glasses", ["eyeglasses"]],
   ["goggles", ["sunglasses"]], ["shades", ["sunglasses"]], ["sun glasses", ["sunglasses"]],
   ["halka", ["lightweight", "comfortable"]], ["light", ["lightweight"]],
-  ["dad", ["men", "reading", "classic"]], ["father", ["men", "reading", "classic"]], ["papa", ["men", "reading", "classic"]],
+  ["dad", ["men"]], ["father", ["men"]], ["papa", ["men"]],
   ["office", ["professional", "classic", "laptop"]], ["work", ["professional", "classic"]],
   ["premium", ["sophisticated", "timeless", "titanium", "acetate"]],
   ["cheap", ["affordable"]], ["budget", ["affordable"]], ["not expensive", ["affordable"]],
@@ -181,6 +195,41 @@ function reasons(plan:QueryPlan,p:CatalogProduct,b:ScoreBreakdown,shopper?:Shopp
   return values.slice(0,3);
 }
 
+function planResponse(query:string,plan:QueryPlan,shopper:ShopperSignals|undefined,resultCount:number):ResponsePlan {
+  const normalized=normalize(query);
+  const proxy=/\b(dad|father|papa|mom|mother|parent)\b/.test(normalized)||shopper?.id==="family";
+  const knownSize=Boolean(plan.hard.size||shopper?.sizes?.length);
+  const explicitUse=/\b(reading|office|work|computer|screen|driving|outdoor|sports|travel|college|everyday)\b/.test(normalized);
+  let question:ResponsePlan["question"];
+
+  if(!plan.exactSku&&plan.intent==="medical_product"&&!/\b(reorder|repeat|again)\b/.test(normalized)) {
+    question={id:"lens-journey",prompt:"Is this a repeat lens order or a new purchase?",reason:"That determines whether we should retrieve an exact prior product or start a compatibility check.",options:[{label:"Repeat order",append:"reorder"},{label:"New purchase",action:"prescription-check"},{label:"I’m not sure",action:"eye-test"}]};
+  } else if(proxy&&!knownSize) {
+    question={id:"proxy-size",prompt:"Do you know the wearer’s current frame size?",reason:"Fit changes which frames are genuinely eligible; we should not reuse the buyer’s size.",options:[{label:"Small",append:"small"},{label:"Medium",append:"medium"},{label:"Large",append:"large"},{label:"Not sure",action:"size-guide"}]};
+  } else if(proxy&&!explicitUse) {
+    question={id:"proxy-use",prompt:"What will they mainly use these glasses for?",reason:"Reading, screen use and everyday wear can lead to different products and lens guidance.",options:[{label:"Everyday",append:"everyday"},{label:"Reading",append:"reading"},{label:"Computer",append:"computer"},{label:"Not sure",action:"eye-test"}]};
+  } else if(!plan.category&&plan.intent!=="exact_product") {
+    question={id:"product-type",prompt:"Which kind of eyewear are you looking for?",reason:"The request is broad enough that choosing the product type materially changes the catalog.",options:[{label:"Eyeglasses",append:"eyeglasses"},{label:"Sunglasses",append:"sunglasses"},{label:"Contact lenses",append:"contact lenses"}]};
+  } else if(plan.intent==="product_discovery"&&!plan.hard.size&&!plan.soft.shapes.length&&!plan.soft.styles.length&&!plan.soft.useCases.length) {
+    question={id:"priority",prompt:"What matters most for this choice?",reason:"One preference is enough to improve the first shelf without forcing a full quiz.",options:[{label:"Classic style",append:"classic"},{label:"Lightweight fit",append:"lightweight"},{label:"Bold look",append:"bold"},{label:"Help me choose",action:"size-guide"}]};
+  }
+
+  const education=question?.id==="proxy-size"||question?.id==="priority"
+    ? {title:"Not sure about frame size?",copy:"Use a current pair or a quick face-size guide before making fit a hard filter.",action:"Open size guide"}
+    : undefined;
+  const service=plan.intent==="medical_product"
+    ? {title:"Prescription compatibility check",copy:"Power, base curve, diameter and wearer must be verified before checkout.",action:"Start safety check"}
+    : proxy&&/\b(reading|power|prescription)\b/.test(normalized)
+      ? {title:"Eye-test support",copy:"Choose a frame now, then verify the wearer’s prescription before lens fulfilment.",action:"Find an eye test"}
+      : undefined;
+  const types:ResponsePlan["types"]=[];
+  if(resultCount)types.push("products");
+  if(question)types.push("question");
+  if(education)types.push("education");
+  if(service)types.push("service");
+  return {types,question,education,service};
+}
+
 export function runSearch(query:string,catalog:CatalogProduct[],algorithm:Algorithm,shopper?:ShopperSignals):SearchTrace {
   const plan=understandQuery(query);
   const exactPool=plan.exactSku?catalog.filter(p=>normalize(p.sku)===normalize(plan.exactSku!)):[];
@@ -216,14 +265,16 @@ export function runSearch(query:string,catalog:CatalogProduct[],algorithm:Algori
   }).sort((a,b)=>b.score-a.score||a.product.sku.localeCompare(b.product.sku));
   const oldIndex=new Map(retrieved.map((x,i)=>[x.product.id,i]));
   const results=reranked.map((x,i)=>({...x,movement:(oldIndex.get(x.product.id)??i)-i,reasons:reasons(plan,x.product,x.breakdown,shopper)}));
+  const response=planResponse(query,plan,shopper,results.length);
   return {
-    algorithm,plan,universeCount:catalog.length,eligibleCount:pool.length,rejectedCount:catalog.length-pool.length,retrievedCount:retrieved.length,lexicalHits,semanticHits,semanticStrongHits,
+    algorithm,plan,universeCount:catalog.length,eligibleCount:pool.length,rejectedCount:catalog.length-pool.length,retrievedCount:retrieved.length,lexicalHits,semanticHits,semanticStrongHits,response,
     elapsedMs:Number((0.6+catalog.length/180+retrieved.length/220).toFixed(1)),results,
     stages:[
       {name:"Catalog",count:catalog.length,description:"Representative lab catalog"},
       {name:"Eligibility",count:pool.length,description:algorithm==="hybrid"?"Hard category, price, size, polarization and stock gates":"Only in-stock products"},
       {name:"Retrieval",count:retrieved.length,description:algorithm==="hybrid"?"Keyword + transparent semantic concepts":"Keyword matches only"},
       {name:"Re-ranking",count:Math.min(20,results.length),description:algorithm==="hybrid"?"Top shelf diversity and deterministic tie-breaking":"No semantic reranking"},
+      {name:"Compose",count:response.types.length,description:"Choose products, one useful question, education or a service"},
       {name:"Results",count:Math.min(12,results.length),description:"Customer-facing shelf"},
     ],
   };

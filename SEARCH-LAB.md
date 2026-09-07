@@ -4,6 +4,8 @@ This prototype is an algorithm test bench for a modest but attribute-rich eyewea
 
 The customer-facing search and the system debugger are intentionally presented as one experience. The product shelf shows what the shopper sees; the adjacent trace explains the context, retrieval, filters and ranking that produced it.
 
+The search experience has three presentation modes: **Customer only** hides experiment mechanics, **Side by side** pairs the customer surface with the dark system trace, and **System only** replaces the product-card presentation with a compact ranked-candidate workbench. The modes change presentation, not the underlying query or catalog.
+
 ## Dataset
 
 - 600 representative products.
@@ -47,6 +49,19 @@ The search experience includes five inspectable contexts: a new visitor, a retur
 - Prescription data is never inferred and must be verified before a medical purchase.
 
 Changing the context updates the sample query, customer response, evidence ledger and personalization component in the selected-result score.
+
+## Response composition
+
+Search does not have to end in one undifferentiated product list. After ranking, a small deterministic response composer chooses the relevant combination of:
+
+- a product shelf;
+- one high-value follow-up question;
+- an educational aid such as frame-size help; and
+- a service or safety step such as an eye test or prescription compatibility check.
+
+For example, **“specs for my dad”** no longer assumes that Dad needs reading glasses. If the active context lacks the wearer’s fit, the experience asks for size first and offers a size guide when the shopper is unsure. A linked Dad profile can supply verified fit, in which case the next question asks about intended use. Only one question is shown at a time, and the shopper can continue browsing products while answering.
+
+The visible **Example searches** are demonstration shortcuts for exercising different query types. Earlier versions called them “failure modes,” which was internal evaluation language and inappropriate for the customer surface.
 
 ## Accessing the catalog
 

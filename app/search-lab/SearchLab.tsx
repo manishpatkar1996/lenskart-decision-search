@@ -3,10 +3,11 @@
 import { useMemo, useState } from "react";
 import { benchmarkCases, evaluateAlgorithm } from "./benchmark";
 import { catalog, catalogFacts, type CatalogProduct } from "./catalog";
-import { runSearch, type Algorithm, type SearchResult, type ShopperSignals } from "./searchEngine";
+import { runSearch, type Algorithm, type ResponseOption, type SearchResult, type ShopperSignals } from "./searchEngine";
 
 const examples = [
   "halka specs for office under 2000",
+  "specs for my dad",
   "black square eyeglasses under 2000",
   "gold cat eye shades",
   "polarised aviator sunglasses below 1500",
@@ -44,62 +45,91 @@ function ProductVisual({product}:{product:CatalogProduct}) {
   return <FrameFallback product={product}/>;
 }
 
-function ResultCard({result,index}:{result:SearchResult;index:number}) {
+type ViewMode = "customer" | "split" | "system";
+
+function ResultCard({result,index,showSystem}:{result:SearchResult;index:number;showSystem:boolean}) {
   const {product}=result;
   return <article className="lab-product">
-    <div className="lab-product-visual"><span className="lab-rank">#{index+1}</span><span className={`lab-origin ${product.sourceKind}`}>{product.sourceKind==="public-sample"?"Public seed · enriched":"Synthetic"}</span><ProductVisual product={product}/></div>
-    <div className="lab-product-copy"><div className="lab-brand">{product.brand}<span>★ {product.rating}</span></div><h3>{product.title}</h3><p className="lab-spec">{product.sku} · {product.size} · {product.material}</p><p className="lab-description">{product.description}</p><div className="lab-highlights">{product.highlights.map(value=><span key={value}>{value}</span>)}</div><div className="lab-price"><b>{money(product.price)}</b>{product.oldPrice&&<s>{money(product.oldPrice)}</s>}<span>Score {result.score.toFixed(2)}</span></div>
-    <div className="lab-reasons">{result.reasons.length?result.reasons.map(reason=><span key={reason}>{reason}</span>):<span>Keyword overlap</span>}</div>{product.sourceKind==="public-sample"&&<small className="lab-generated-note">Public listing seed; description and enriched attributes are lab-generated.</small>}</div>
+    <div className="lab-product-visual"><span className="lab-rank">#{index+1}</span>{showSystem&&<span className={`lab-origin ${product.sourceKind}`}>{product.sourceKind==="public-sample"?"Public seed · enriched":"Synthetic"}</span>}<ProductVisual product={product}/></div>
+    <div className="lab-product-copy"><div className="lab-brand">{product.brand}<span>★ {product.rating}</span></div><h3>{product.title}</h3><p className="lab-spec">{product.sku} · {product.size} · {product.material}</p><p className="lab-description">{product.description}</p><div className="lab-highlights">{product.highlights.map(value=><span key={value}>{value}</span>)}</div><div className="lab-price"><b>{money(product.price)}</b>{product.oldPrice&&<s>{money(product.oldPrice)}</s>}{showSystem&&<span>Score {result.score.toFixed(2)}</span>}</div>
+    <div className="lab-reasons">{result.reasons.length?result.reasons.map(reason=><span key={reason}>{reason}</span>):<span>Keyword overlap</span>}</div>{showSystem&&product.sourceKind==="public-sample"&&<small className="lab-generated-note">Public listing seed; description and enriched attributes are lab-generated.</small>}</div>
   </article>;
+}
+
+function GuidedResponse({question,education,service,supportMode,onAnswer}:{question:ReturnType<typeof runSearch>["response"]["question"];education:ReturnType<typeof runSearch>["response"]["education"];service:ReturnType<typeof runSearch>["response"]["service"];supportMode:ResponseOption["action"]|null;onAnswer:(option:ResponseOption)=>void}) {
+  const [started,setStarted]=useState(false);
+  const support=supportMode==="size-guide"
+    ? {title:"Find the right frame size",copy:"Check the three numbers printed inside a current frame, or use a quick face-size scan before filtering the shelf.",action:"Start size guide"}
+    : supportMode==="eye-test"
+      ? {title:"Get help with the vision need",copy:"A quick eye test can confirm whether the wearer needs reading, distance or progressive lenses.",action:"Find an eye test"}
+      : supportMode==="prescription-check"
+        ? {title:"Start a compatibility check",copy:"We’ll verify power, base curve, diameter and the active wearer before a contact-lens order can continue.",action:"Check prescription"}
+        : null;
+  if(!question&&!education&&!service&&!support)return null;
+  return <section className="guided-response"><div className="guided-response-head"><span>NEXT BEST STEP</span><h3>{question?question.prompt:"More than a product shelf"}</h3>{question&&<p>{question.reason}</p>}</div>{question&&<div className="guided-options">{question.options.map(option=><button key={option.label} onClick={()=>onAnswer(option)}>{option.label}</button>)}</div>}<div className="response-cards">{support&&<article className="response-card support"><small>GUIDED HELP</small><b>{support.title}</b><p>{support.copy}</p><button onClick={()=>setStarted(true)}>{started?"Started ✓":`${support.action} →`}</button></article>}{education&&!support&&<article className="response-card education-card"><small>EDUCATION</small><b>{education.title}</b><p>{education.copy}</p><button onClick={()=>onAnswer({label:education.action,action:"size-guide"})}>{education.action} →</button></article>}{service&&<article className="response-card service-card"><small>SAFETY / SERVICE</small><b>{service.title}</b><p>{service.copy}</p><button onClick={()=>onAnswer({label:service.action,action:service.title.includes("Prescription")?"prescription-check":"eye-test"})}>{service.action} →</button></article>}</div></section>;
 }
 
 export default function SearchLab(){
   const [section,setSection]=useState<"playground"|"evaluation">("playground");
+  const [viewMode,setViewMode]=useState<ViewMode>("split");
   const [shopperId,setShopperId]=useState(shopperContexts[0].id);
   const [query,setQuery]=useState(examples[0]);
   const [submitted,setSubmitted]=useState(examples[0]);
   const [algorithm,setAlgorithm]=useState<Algorithm>("hybrid");
   const [selected,setSelected]=useState(0);
+  const [answeredQuestion,setAnsweredQuestion]=useState<string|null>(null);
+  const [supportMode,setSupportMode]=useState<ResponseOption["action"]|null>(null);
   const shopper=shopperContexts.find(context=>context.id===shopperId)??shopperContexts[0];
   const trace=useMemo(()=>runSearch(submitted,catalog,algorithm,shopper),[submitted,algorithm,shopper]);
   const metrics=useMemo(()=>({baseline:evaluateAlgorithm(catalog,"baseline"),hybrid:evaluateAlgorithm(catalog,"hybrid")}),[]);
   const active=trace.results[selected]||trace.results[0];
-  function search(next?:string){const value=next??query;setQuery(value);setSubmitted(value);setSelected(0);}
-  function changeShopper(nextId:string){const next=shopperContexts.find(context=>context.id===nextId)??shopperContexts[0];setShopperId(next.id);setQuery(next.sampleQuery);setSubmitted(next.sampleQuery);setSelected(0);}
-  return <main className="search-lab">
+  const question=trace.response.question?.id===answeredQuestion?undefined:trace.response.question;
+  const showCustomer=viewMode!=="system";
+  const showSystem=viewMode!=="customer";
+  function search(next?:string){const value=next??query;setQuery(value);setSubmitted(value);setSelected(0);setAnsweredQuestion(null);setSupportMode(null);}
+  function changeShopper(nextId:string){const next=shopperContexts.find(context=>context.id===nextId)??shopperContexts[0];setShopperId(next.id);setQuery(next.sampleQuery);setSubmitted(next.sampleQuery);setSelected(0);setAnsweredQuestion(null);setSupportMode(null);}
+  function answer(option:ResponseOption){
+    if(option.append){search(`${submitted} ${option.append}`);return;}
+    if(trace.response.question)setAnsweredQuestion(trace.response.question.id);
+    setSupportMode(option.action??null);
+  }
+  return <main className={`search-lab view-${viewMode}`}>
     <header className="lab-header"><div><span className="lab-logo">∞</span><div><b>Lenskart Decision Search</b><small>Customer experience + live system model</small></div></div><div className="lab-provenance"><b>{catalogFacts.total}</b> products <span>·</span> {catalogFacts.publicSamples} captured samples <span>·</span> {catalogFacts.synthetic} labelled synthetic variants</div></header>
-    <nav className="lab-section-tabs" aria-label="Search views"><button className={section==="playground"?"active":""} onClick={()=>setSection("playground")}>Search experience</button><button className={section==="evaluation"?"active":""} onClick={()=>setSection("evaluation")}>Data & evaluation</button></nav>
+    <div className="lab-view-bar"><nav className="lab-section-tabs" aria-label="Search views"><button className={section==="playground"?"active":""} onClick={()=>setSection("playground")}>Search experience</button><button className={section==="evaluation"?"active":""} onClick={()=>setSection("evaluation")}>Data & evaluation</button></nav>{section==="playground"&&<div className="lab-view-switch" aria-label="Choose prototype view"><span>View</span><button className={viewMode==="customer"?"active customer":""} onClick={()=>{setAlgorithm("hybrid");setViewMode("customer")}}>Customer only</button><button className={viewMode==="split"?"active split":""} onClick={()=>setViewMode("split")}>Side by side</button><button className={viewMode==="system"?"active system":""} onClick={()=>setViewMode("system")}>System only</button></div>}</div>
 
     {section==="evaluation"?<EvaluationView baseline={metrics.baseline} hybrid={metrics.hybrid}/>:<>
-    <section className="lab-intro"><div><p>ONE EXPERIENCE · TWO LEVELS OF TRUTH</p><h1>See what the customer sees—and why the system chose it.</h1><span>Search, guided refinement and product results now sit beside the live retrieval and ranking trace. Compare the keyword baseline with a modest hybrid system sized for hundreds—not millions—of candidates.</span></div><div className="lab-live-facts"><div><small>PUBLIC PLP OBSERVATION</small><b>608 sunglasses</b><span>1,582 eyeglasses · {catalogFacts.auditedAt}</span></div><div><small>OUR REPRESENTATIVE LAB</small><b>600 products</b><span>Runs entirely in your browser</span></div></div></section>
+    <section className="lab-intro"><div><p>{viewMode==="customer"?"CUSTOMER EXPERIENCE":viewMode==="system"?"SYSTEM WORKBENCH":"ONE EXPERIENCE · TWO CLEAR VIEWS"}</p><h1>{viewMode==="customer"?"Find the right eyewear—with one useful step at a time.":viewMode==="system"?"Inspect how every search decision was made.":"See what the customer sees—and what the system sees."}</h1><span>{viewMode==="customer"?"Search can return products, a quick clarifying question, useful education or the right eye-care service.":viewMode==="system"?"Follow query understanding, eligibility, retrieval, ranking and response composition without the customer presentation layer.":"The warm, light surface is the customer journey. The dark navy surface is the system trace. Switch views at any time."}</span></div>{showSystem&&<div className="lab-live-facts"><div><small>PUBLIC PLP OBSERVATION</small><b>608 sunglasses</b><span>1,582 eyeglasses · {catalogFacts.auditedAt}</span></div><div><small>OUR REPRESENTATIVE LAB</small><b>600 products</b><span>Runs entirely in your browser</span></div></div>}</section>
 
     <section className="lab-controls">
       <div className="shopper-context"><div><span>SHOPPING CONTEXT</span><h2>Who is this search for?</h2><p>The selection changes which account signals are available. Explicit query constraints always win.</p></div><label><span>Active context</span><select value={shopper.id} onChange={event=>changeShopper(event.target.value)}>{shopperContexts.map(context=><option key={context.id} value={context.id}>{context.label}</option>)}</select><small>{shopper.description}</small></label></div>
-      <div className="context-evidence"><div><small>ACTIVE WEARER</small><b>{shopper.wearer}</b><span>{shopper.source}</span></div><div><small>AVAILABLE</small><p>{shopper.available.map(value=><span key={value}>{value}</span>)}</p></div><div><small>MISSING OR UNVERIFIED</small><p>{shopper.missing.map(value=><span key={value}>{value}</span>)}</p></div></div>
+      {showSystem&&<div className="context-evidence"><div><small>ACTIVE WEARER</small><b>{shopper.wearer}</b><span>{shopper.source}</span></div><div><small>AVAILABLE</small><p>{shopper.available.map(value=><span key={value}>{value}</span>)}</p></div><div><small>MISSING OR UNVERIFIED</small><p>{shopper.missing.map(value=><span key={value}>{value}</span>)}</p></div></div>}
       <form onSubmit={e=>{e.preventDefault();search();}}><span>⌕</span><input value={query} onChange={e=>setQuery(e.target.value)} aria-label="Search the catalog"/><button>Run search</button></form>
-      <div className="lab-examples"><span>Try a failure mode</span>{examples.map(example=><button key={example} onClick={()=>search(example)}>{example}</button>)}</div>
-      <div className="lab-model-switch"><div><b>Algorithm under test</b><span>Same catalog and query; only the search logic changes.</span></div><button className={algorithm==="baseline"?"active":""} onClick={()=>{setAlgorithm("baseline");setSelected(0)}}><b>Keyword baseline</b><small>What words literally match?</small></button><button className={algorithm==="hybrid"?"active":""} onClick={()=>{setAlgorithm("hybrid");setSelected(0)}}><b>Structured hybrid</b><small>Intent + gates + meaning + rank</small></button></div>
-      <div className="customer-response"><span>WHAT THE CUSTOMER SEES</span><div><b>{shopper.label}</b><p>{shopper.customerMessage}</p></div><button onClick={()=>setSection("evaluation")}>See how this is modelled →</button></div>
+      <div className="lab-examples"><span>Example searches</span>{examples.map(example=><button key={example} onClick={()=>search(example)}>{example}</button>)}</div>
+      {showSystem&&<div className="lab-model-switch"><div><b>Algorithm under test</b><span>Same catalog and query; only the search logic changes.</span></div><button className={algorithm==="baseline"?"active":""} onClick={()=>{setAlgorithm("baseline");setSelected(0)}}><b>Keyword baseline</b><small>What words literally match?</small></button><button className={algorithm==="hybrid"?"active":""} onClick={()=>{setAlgorithm("hybrid");setSelected(0)}}><b>Structured hybrid</b><small>Intent + gates + meaning + rank</small></button></div>}
+      {showCustomer&&<div className="customer-response"><span>CUSTOMER MESSAGE</span><div><b>{shopper.label}</b><p>{shopper.customerMessage}</p></div>{showSystem&&<button onClick={()=>setSection("evaluation")}>See how this is modelled →</button>}</div>}
     </section>
 
-    <section className="lab-scoreboard"><div><span>Fixed evaluation set</span><b>{benchmarkCases.length} queries</b></div><Metric label="Relevant result in top 5" before={metrics.baseline.hitAt5} after={metrics.hybrid.hitAt5}/><Metric label="First relevant result" before={metrics.baseline.mrr} after={metrics.hybrid.mrr}/><Metric label="Relevant share of top 5" before={metrics.baseline.precisionAt5} after={metrics.hybrid.precisionAt5}/><p>Evaluation uses explicit synthetic relevance rules. It compares versions consistently; it is not a production KPI.</p></section>
+    {showSystem&&<section className="lab-scoreboard"><div><span>Fixed evaluation set</span><b>{benchmarkCases.length} queries</b></div><Metric label="Relevant result in top 5" before={metrics.baseline.hitAt5} after={metrics.hybrid.hitAt5}/><Metric label="First relevant result" before={metrics.baseline.mrr} after={metrics.hybrid.mrr}/><Metric label="Relevant share of top 5" before={metrics.baseline.precisionAt5} after={metrics.hybrid.precisionAt5}/><p>Evaluation uses explicit synthetic relevance rules. It compares versions consistently; it is not a production KPI.</p></section>}
 
-    <div className="lab-workspace">
-      <section className="lab-results"><div className="lab-results-head"><div><p>RESULTS FOR</p><h2>“{submitted}”</h2><span>{trace.plan.explanation}</span></div><div><b>{trace.results.length}</b><span>ranked candidates</span></div></div>
-        <div className="lab-plan"><span>Intent: <b>{trace.plan.intent.replaceAll("_"," ")}</b></span>{trace.plan.category&&<span>Category: <b>{trace.plan.category}</b></span>}{trace.plan.hard.maxPrice&&<span>Hard gate: <b>≤ {money(trace.plan.hard.maxPrice)}</b></span>}{trace.plan.hard.size&&<span>Hard gate: <b>{trace.plan.hard.size} fit</b></span>}{trace.plan.hard.polarized&&<span>Hard gate: <b>polarized</b></span>}</div>
-        {trace.results.length?<div className="lab-grid">{trace.results.slice(0,12).map((result,index)=><button key={result.product.id} className={selected===index?"selected":""} onClick={()=>setSelected(index)}><ResultCard result={result} index={index}/></button>)}</div>:<div className="lab-empty"><b>No credible result</b><span>Do not silently relax a medical or explicit constraint. Ask one useful question or explain which constraint removed the catalog.</span></div>}
-      </section>
+    <div className={`lab-workspace ${viewMode}`}>
+      {showCustomer&&<section className="lab-results customer-surface"><div className="surface-label customer-label"><span>CUSTOMER VIEW</span><b>The experience a shopper interacts with</b></div><div className="lab-results-head"><div><p>{viewMode==="customer"?"RECOMMENDED FOR YOU":"RESULTS FOR"}</p><h2>“{submitted}”</h2><span>{viewMode==="customer"?"Refine only when an answer materially improves the result.":trace.plan.explanation}</span></div><div><b>{trace.results.length}</b><span>matches found</span></div></div>
+        {showSystem&&<div className="lab-plan"><span>Intent: <b>{trace.plan.intent.replaceAll("_"," ")}</b></span>{trace.plan.category&&<span>Category: <b>{trace.plan.category}</b></span>}{trace.plan.hard.maxPrice&&<span>Hard gate: <b>≤ {money(trace.plan.hard.maxPrice)}</b></span>}{trace.plan.hard.size&&<span>Hard gate: <b>{trace.plan.hard.size} fit</b></span>}{trace.plan.hard.polarized&&<span>Hard gate: <b>polarized</b></span>}</div>}
+        <GuidedResponse key={`${submitted}-${supportMode??"none"}`} question={question} education={trace.response.education} service={trace.response.service} supportMode={supportMode} onAnswer={answer}/>
+        {trace.results.length?<><div className="product-shelf-label"><span>PRODUCT MATCHES</span><b>{question?"You can browse while answering":"Best matches for this request"}</b></div><div className="lab-grid">{trace.results.slice(0,12).map((result,index)=><button key={result.product.id} className={selected===index?"selected":""} onClick={()=>setSelected(index)}><ResultCard result={result} index={index} showSystem={showSystem}/></button>)}</div></>:<div className="lab-empty"><b>No credible result</b><span>Do not silently relax a medical or explicit constraint. Ask one useful question or explain which constraint removed the catalog.</span></div>}
+      </section>}
 
-      <aside className="lab-debugger"><div className="debug-title"><span>LIVE TRACE</span><h2>Search debugger</h2><p>{trace.elapsedMs} ms in-browser simulation</p></div>
+      {showSystem&&<aside className="lab-debugger system-surface"><div className="surface-label system-label"><span>SYSTEM VIEW</span><b>Evidence, decisions and ranking trace</b></div><div className="debug-title"><span>LIVE TRACE</span><h2>Search debugger</h2><p>{trace.elapsedMs} ms in-browser simulation</p></div>
+        {viewMode==="system"&&<section className="system-candidates"><h3>Ranked candidates</h3>{trace.results.slice(0,12).map((result,index)=><button key={result.product.id} className={selected===index?"selected":""} onClick={()=>setSelected(index)}><i>#{index+1}</i><span><b>{result.product.title}</b><small>{result.product.sku} · {result.product.brand}</small></span><strong>{result.score.toFixed(2)}</strong></button>)}</section>}
         <div className="debug-pipeline">{trace.stages.map((stage,index)=><div key={stage.name}><i>{index+1}</i><span><b>{stage.name}</b><small>{stage.description}</small></span><strong>{stage.count}</strong></div>)}</div>
-        <section className="debug-plan"><h3>0. Shopper context</h3><dl><div><dt>Active wearer</dt><dd>{shopper.wearer}</dd></div><div><dt>Signal source</dt><dd>{shopper.source}</dd></div><div><dt>Ranking role</dt><dd>{algorithm==="hybrid"&&shopper.id!=="new"?"Soft personalization after explicit constraints":"No profile contribution"}</dd></div></dl></section>
+        <section className="debug-plan"><h3>Context input</h3><dl><div><dt>Active wearer</dt><dd>{shopper.wearer}</dd></div><div><dt>Signal source</dt><dd>{shopper.source}</dd></div><div><dt>Ranking role</dt><dd>{algorithm==="hybrid"&&shopper.id!=="new"?"Soft personalization after explicit constraints":"No profile contribution"}</dd></div></dl><p className="context-caption">“Unknown shopper” means the new-visitor context has no verified profile—not a score of zero.</p></section>
         <section className="debug-plan"><h3>1. What we understood</h3><dl><div><dt>Intent</dt><dd>{trace.plan.intent}</dd></div><div><dt>Confidence</dt><dd>{trace.plan.confidence.intent}% / {trace.plan.confidence.product}% / {trace.plan.confidence.constraints}%</dd></div><div><dt>Expanded meaning</dt><dd>{trace.plan.expandedTerms.join(" · ")||"None"}</dd></div></dl></section>
         <section className="debug-plan"><h3>2. Why candidates disappeared</h3><p>{trace.rejectedCount} of {trace.universeCount} products were excluded before ranking. {algorithm==="baseline"?"The baseline only checks stock, so irrelevant categories can survive.":"The hybrid applies explicit category, budget, fit, polarization and inventory as gates."}</p></section>
         <section className="debug-plan"><h3>3. Retrieval evidence</h3><div className="debug-bars"><span><b style={{width:`${Math.min(100,trace.lexicalHits/6)}%`}}/>Literal candidates <i>{trace.lexicalHits}</i></span><span><b style={{width:`${Math.min(100,trace.semanticHits/6)}%`}}/>Loose concept matches <i>{trace.semanticHits}</i></span><span><b style={{width:`${Math.min(100,trace.semanticStrongHits/3)}%`}}/>Strong concept matches <i>{trace.semanticStrongHits}</i></span></div><p className="retrieval-caption">A loose match shares at least one expanded concept; it is candidate recall, not a claim that the product is relevant.</p></section>
         {active&&<section className="debug-score"><h3>4. Selected result score</h3><p>{active.product.sku} · rank #{selected+1}{active.movement!==0?` · moved ${active.movement>0?"up":"down"} ${Math.abs(active.movement)}`:""}</p>{Object.entries(active.breakdown).map(([label,value])=><div key={label}><span>{label.replaceAll(/([A-Z])/g," $1")}</span><b>{value===0?"—":Number(value).toFixed(2)}</b></div>)}<strong>Total <b>{active.score.toFixed(2)}</b></strong></section>}
-        {active&&<section className="debug-plan debug-product-data"><h3>5. Product data used</h3><p>{active.product.description}</p><div className="debug-tags">{active.product.highlights.map(value=><span key={value}>{value}</span>)}</div><dl><div><dt>Collection</dt><dd>{active.product.collection}</dd></div><div><dt>Style + use</dt><dd>{[...active.product.styles,...active.product.useCases].join(" · ")}</dd></div><div><dt>Face + power</dt><dd>{[...active.product.faceShapes,...active.product.powerTypes].join(" · ")||"Not applicable"}</dd></div><div><dt>Availability</dt><dd>{active.product.inventory} units · {active.product.deliveryDays}-day delivery</dd></div></dl><small>{active.product.sourceKind==="public-sample"?"Listing seed captured publicly; descriptive and supporting fields generated for this lab.":"Entire product record generated for this lab."}</small></section>}
+        <section className="debug-plan debug-response-plan"><h3>5. Response composer</h3><p>The system chose <b>{trace.response.types.join(" + ")||"no response"}</b>.</p>{trace.response.question&&<dl><div><dt>Question</dt><dd>{trace.response.question.prompt}</dd></div><div><dt>Why ask?</dt><dd>{trace.response.question.reason}</dd></div></dl>}<div className="debug-tags">{trace.response.types.map(type=><span key={type}>{type}</span>)}</div></section>
+        {active&&<section className="debug-plan debug-product-data"><h3>6. Product data used</h3><p>{active.product.description}</p><div className="debug-tags">{active.product.highlights.map(value=><span key={value}>{value}</span>)}</div><dl><div><dt>Collection</dt><dd>{active.product.collection}</dd></div><div><dt>Style + use</dt><dd>{[...active.product.styles,...active.product.useCases].join(" · ")}</dd></div><div><dt>Face + power</dt><dd>{[...active.product.faceShapes,...active.product.powerTypes].join(" · ")||"Not applicable"}</dd></div><div><dt>Availability</dt><dd>{active.product.inventory} units · {active.product.deliveryDays}-day delivery</dd></div></dl><small>{active.product.sourceKind==="public-sample"?"Listing seed captured publicly; descriptive and supporting fields generated for this lab.":"Entire product record generated for this lab."}</small></section>}
         <div className="debug-note"><b>What is deliberately absent?</b><span>No vector database, no collaborative filtering and no generative LLM ranking every product. The catalog is too small and purchase history too sparse to justify them yet.</span></div>
-      </aside>
+      </aside>}
     </div>
     </>}
   </main>;

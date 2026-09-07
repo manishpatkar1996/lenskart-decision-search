@@ -22,7 +22,11 @@ test("server-renders the unified search experience", async () => {
   assert.match(html, /600 products/);
   assert.match(html, /Who is this search for\?/);
   assert.match(html, /New visitor/);
-  assert.match(html, /WHAT THE CUSTOMER SEES/);
+  assert.match(html, /CUSTOMER MESSAGE/);
+  assert.match(html, /Customer only/);
+  assert.match(html, /Side by side/);
+  assert.match(html, /System only/);
+  assert.match(html, /Example searches/);
   assert.match(html, /Keyword baseline/);
   assert.match(html, /Structured hybrid/);
   assert.match(html, /Search debugger/);
@@ -52,4 +56,10 @@ test("catalog and debugger retain experiment provenance", async () => {
   assert.match(lab, /Public listing seed; description and enriched attributes are lab-generated/);
   assert.match(lab, /Generated for this prototype/);
   assert.match(lab, /description_source/);
+  assert.match(lab, /NEXT BEST STEP/);
+  assert.match(lab, /Response composer/);
+  assert.match(lab, /Context input/);
+  assert.doesNotMatch(lab, /0\. Shopper context/);
+  assert.match(engine, /Do you know the wearer’s current frame size/);
+  assert.match(engine, /Choose products, one useful question, education or a service/);
 });
