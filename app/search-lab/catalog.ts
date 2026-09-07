@@ -1,5 +1,9 @@
-export type Category = "Eyeglasses" | "Sunglasses" | "Contact lenses";
+export type Category = "Eyeglasses" | "Sunglasses" | "Contact lenses" | "Service";
 export type Size = "XS" | "S" | "M" | "L" | "XL";
+export type ObjectKind = "product" | "service";
+export type Audience = "adult" | "kids";
+export type ServiceType = "eye_test" | "home_eye_test" | "repair" | "lens_replacement" | "home_trial" | "order_support";
+export type LensNeed = "reading" | "progressive" | "distance" | "blue_filter" | "photochromic" | "high_index";
 
 export type CatalogProduct = {
   id: string;
@@ -8,7 +12,10 @@ export type CatalogProduct = {
   brand: string;
   collection: string;
   category: Category;
+  objectKind: ObjectKind;
+  serviceType?: ServiceType;
   gender: "Men" | "Women" | "Unisex" | "Kids";
+  audience: Audience;
   shape: string;
   size: Size;
   color: string;
@@ -19,10 +26,16 @@ export type CatalogProduct = {
   rating: number;
   polarized: boolean;
   lightweight: boolean;
+  durable: boolean;
+  wideFit: boolean;
+  slipResistant: boolean;
+  highIndexReady: boolean;
+  sphere?: number;
   styles: string[];
   useCases: string[];
   faceShapes: string[];
   powerTypes: string[];
+  lensNeeds: LensNeed[];
   description: string;
   highlights: string[];
   descriptionSource: "lab-generated";
@@ -110,6 +123,26 @@ function createProductCopy(product:Pick<CatalogProduct,"brand"|"category"|"shape
   };
 }
 
+function lensNeedsFrom(category: Category, powerTypes: string[], uses: string[]): LensNeed[] {
+  const needs: LensNeed[] = [];
+  if (powerTypes.some(value => /progressive/i.test(value))) needs.push("progressive");
+  if (powerTypes.some(value => /reading/i.test(value)) || uses.includes("reading")) needs.push("reading");
+  if (powerTypes.some(value => /blue filter/i.test(value)) || uses.includes("laptop")) needs.push("blue_filter");
+  if (category === "Eyeglasses" && !needs.includes("reading")) needs.push("distance");
+  return [...new Set(needs)];
+}
+
+function enrichFit(gender: CatalogProduct["gender"], size: Size, material: string, lightweight: boolean, frameType: string, i: number) {
+  const audience: Audience = gender === "Kids" ? "kids" : "adult";
+  return {
+    audience,
+    durable: audience === "kids" || material === "TR90",
+    wideFit: size === "L" || size === "XL",
+    slipResistant: lightweight || material === "TR90",
+    highIndexReady: audience === "adult" && frameType !== "Rimless" && i % 3 !== 1,
+  };
+}
+
 function makePublicProduct(seed: PublicSeed, i: number): CatalogProduct {
   const lowerBrand = seed.brand.toLowerCase();
   const lightweight = seed.material === "TR90" || lowerBrand.includes("air") || lowerBrand.includes("hustlr");
@@ -117,6 +150,9 @@ function makePublicProduct(seed: PublicSeed, i: number): CatalogProduct {
   const style=styleGroups[i % styleGroups.length];
   const uses=useCases[i % useCases.length];
   const polarized=seed.category === "Sunglasses" && (lowerBrand.includes("polarized") || i % 3 !== 0);
+  const gender=genders[i % genders.length];
+  const powerTypes=seed.category === "Eyeglasses" ? ["Single Vision", "Zero Power", i % 3 === 0 ? "Progressive" : "Reading"] : ["Zero Power"];
+  const fit=enrichFit(gender, size, seed.material, lightweight, "Full Rim", i);
   const copy=createProductCopy({brand:seed.brand,category:seed.category,shape:seed.shape,color:seed.color,material:seed.material,size,frameType:"Full Rim",styles:style,useCases:uses,lightweight,polarized});
   return {
     id: `public-${i + 1}`,
@@ -125,7 +161,8 @@ function makePublicProduct(seed: PublicSeed, i: number): CatalogProduct {
     brand: seed.brand,
     collection: lowerBrand.includes("air") ? "Air" : lowerBrand.includes("polarized") ? "Polarized" : "Classic",
     category: seed.category,
-    gender: genders[i % genders.length],
+    objectKind: "product",
+    gender,
     shape: seed.shape,
     size,
     color: seed.color,
@@ -136,10 +173,12 @@ function makePublicProduct(seed: PublicSeed, i: number): CatalogProduct {
     rating: seed.rating,
     polarized,
     lightweight,
+    ...fit,
     styles: style,
     useCases: uses,
     faceShapes: faceShapes[i % faceShapes.length],
-    powerTypes: seed.category === "Eyeglasses" ? ["Single Vision", "Zero Power", i % 3 === 0 ? "Progressive" : "Reading"] : ["Zero Power"],
+    powerTypes,
+    lensNeeds: lensNeedsFrom(seed.category, powerTypes, uses),
     description:copy.description,
     highlights:copy.highlights,
     descriptionSource:"lab-generated",
@@ -168,6 +207,11 @@ function makeSyntheticProduct(i: number): CatalogProduct {
   const lightweight=material === "TR90" || material === "Titanium" || brand === "Lenskart Air";
   const copy=createProductCopy({brand,category,shape,color,material,size:contact?"M":size,frameType,styles:style,useCases:uses,lightweight,polarized});
   const sku = contact ? `AQ-CL-${String(i - 545).padStart(3, "0")}` : `${brand.split(" ").map(x=>x[0]).join("")}-${category === "Sunglasses" ? "S" : "E"}${String(20000 + i).padStart(5, "0")}-C${1 + i % 9}`;
+  const gender = contact ? "Unisex" : genders[seeded(i, 9, genders.length)];
+  const powerTypes = contact ? [uses[0], "Spherical", i % 5 === 0 ? "Toric" : "Standard"] : category === "Eyeglasses" ? ["Single Vision", i % 5 === 0 ? "Progressive" : "Zero Power", i % 4 === 0 ? "Blue Filter" : "Reading"] : ["Zero Power", i % 6 === 0 ? "Power Sun" : "Plano"];
+  const fit=enrichFit(gender, contact ? "M" : size, material, lightweight, frameType, i);
+  const reader = !contact && category === "Eyeglasses" && powerTypes.includes("Reading") && i % 7 === 0;
+  const sphere = contact ? [-2.5, -1.25, -3, 0, -8][i % 5] : reader ? [1.5, 2][i % 2] : undefined;
   return {
     id: `synthetic-${i + 1}`,
     sku,
@@ -175,7 +219,8 @@ function makeSyntheticProduct(i: number): CatalogProduct {
     brand,
     collection: contact ? "Vision Care" : style[0][0].toUpperCase() + style[0].slice(1),
     category,
-    gender: contact ? "Unisex" : genders[seeded(i, 9, genders.length)],
+    objectKind: "product",
+    gender,
     shape,
     size: contact ? "M" : size,
     color,
@@ -186,10 +231,13 @@ function makeSyntheticProduct(i: number): CatalogProduct {
     rating: Number((4.1 + (seeded(i, 10, 17) / 20)).toFixed(2)),
     polarized,
     lightweight,
+    ...fit,
+    sphere,
     styles: style,
     useCases: uses,
     faceShapes: contact ? [] : faceShapes[seeded(i, 11, faceShapes.length)],
-    powerTypes: contact ? [uses[0], "Spherical", i % 5 === 0 ? "Toric" : "Standard"] : category === "Eyeglasses" ? ["Single Vision", i % 5 === 0 ? "Progressive" : "Zero Power", i % 4 === 0 ? "Blue Filter" : "Reading"] : ["Zero Power", i % 6 === 0 ? "Power Sun" : "Plano"],
+    powerTypes,
+    lensNeeds: contact ? [] : lensNeedsFrom(category, powerTypes, uses),
     description:copy.description,
     highlights:copy.highlights,
     descriptionSource:"lab-generated",
@@ -200,15 +248,102 @@ function makeSyntheticProduct(i: number): CatalogProduct {
   };
 }
 
+function makeService(id: string, sku: string, title: string, serviceType: ServiceType, price: number, description: string, highlights: string[]): CatalogProduct {
+  return {
+    id,
+    sku,
+    title,
+    brand: "Lenskart Services",
+    collection: "Care",
+    category: "Service",
+    objectKind: "service",
+    serviceType,
+    gender: "Unisex",
+    audience: "adult",
+    shape: "Service",
+    size: "M",
+    color: "None",
+    material: "Service",
+    frameType: "Service",
+    price,
+    rating: 4.8,
+    polarized: false,
+    lightweight: false,
+    durable: false,
+    wideFit: false,
+    slipResistant: false,
+    highIndexReady: false,
+    styles: ["service"],
+    useCases: [serviceType.replaceAll("_", " ")],
+    faceShapes: [],
+    powerTypes: [],
+    lensNeeds: [],
+    description,
+    highlights,
+    descriptionSource: "lab-generated",
+    popularity: 90,
+    inventory: 99,
+    deliveryDays: 1,
+    sourceKind: "synthetic",
+  };
+}
+
+const services: CatalogProduct[] = [
+  makeService("service-eye-test", "LK-SVC-EYETEST", "Book an in-store eye test", "eye_test", 0, "A store eye-test booking represented as a searchable service object, not a product shelf.", ["Nearby stores", "Prescription after test", "No product substitution"]),
+  makeService("service-home-eye-test", "LK-SVC-HOME-EYETEST", "Free home eye test", "home_eye_test", 0, "A home eye-test request. The live Lenskart site sometimes surfaces this as a product-like SKU; the lab keeps it as a service.", ["At-home visit", "Verify before medical purchase"]),
+  makeService("service-repair", "LK-SVC-REPAIR", "Repair broken glasses", "repair", 299, "Frame and temple repair routed to a service path instead of a generic catalogue dump.", ["Repair, not replace", "Store handoff"]),
+  makeService("service-lenses", "LK-SVC-LENS-REPLACE", "Replace lenses in an old frame", "lens_replacement", 199, "Lens replacement for a frame the customer already owns.", ["Keep current frame", "Compatibility check"]),
+  makeService("service-home-trial", "LK-SVC-HOME-TRIAL", "Try glasses at home", "home_trial", 99, "Home try-on of a shortlist, not a browse of the entire catalogue.", ["Home try-on", "Easy exchange"]),
+  makeService("service-order", "LK-SVC-ORDER", "Track or exchange an order", "order_support", 0, "Authenticated after-sales support. This is not a product search.", ["Order status", "Exchange / return"]),
+];
+
+function fixtureProduct(partial: Pick<CatalogProduct, "id"|"sku"|"title"|"brand"|"category"|"shape"|"size"|"color"|"material"|"price"|"gender"|"audience"> & Partial<CatalogProduct>): CatalogProduct {
+  const copy=createProductCopy({brand:partial.brand,category:partial.category,shape:partial.shape,color:partial.color,material:partial.material,size:partial.size,frameType:partial.frameType??"Full Rim",styles:partial.styles??["classic","minimal"],useCases:partial.useCases??["everyday"],lightweight:partial.lightweight??true,polarized:partial.polarized??false});
+  return {
+    collection: "Lab Fixture",
+    objectKind: "product",
+    frameType: "Full Rim",
+    rating: 4.7,
+    polarized: false,
+    lightweight: true,
+    durable: partial.audience==="kids",
+    wideFit: partial.size==="L"||partial.size==="XL",
+    slipResistant: true,
+    highIndexReady: partial.audience!=="kids",
+    styles: ["classic","minimal"],
+    useCases: ["everyday","college"],
+    faceShapes: ["Oval"],
+    powerTypes: ["Single Vision"],
+    lensNeeds: ["distance"],
+    description: copy.description,
+    highlights: copy.highlights,
+    descriptionSource: "lab-generated",
+    popularity: 40,
+    inventory: 18,
+    deliveryDays: 2,
+    sourceKind: "synthetic",
+    ...partial,
+  };
+}
+
+const compositionalFixtures: CatalogProduct[] = [
+  fixtureProduct({id:"fixture-black-rect",sku:"LK-E-BLACK-RECT-M",title:"Black Rectangle Everyday Eyeglasses",brand:"Lenskart Air",category:"Eyeglasses",shape:"Rectangle",size:"M",color:"Black",material:"TR90",price:999,gender:"Men",audience:"adult",useCases:["everyday","college"],styles:["classic","minimal"]}),
+  fixtureProduct({id:"fixture-blue-large",sku:"LK-E-BLUE-L-W",title:"Large Blue Frames for Women",brand:"Vincent Chase",category:"Eyeglasses",shape:"Square",size:"L",color:"Blue",material:"Acetate",price:1500,gender:"Women",audience:"adult"}),
+];
+
 export const catalog: CatalogProduct[] = [
   ...publicSeeds.map(makePublicProduct),
   ...Array.from({length: 600 - publicSeeds.length}, (_, i) => makeSyntheticProduct(i)),
+  ...compositionalFixtures,
+  ...services,
 ];
 
 export const catalogFacts = {
   total: catalog.length,
+  products: catalog.filter(product => product.objectKind === "product").length,
+  services: services.length,
   publicSamples: publicSeeds.length,
-  synthetic: catalog.length - publicSeeds.length,
+  synthetic: catalog.filter(product => product.sourceKind === "synthetic" && product.objectKind === "product").length,
   liveCategoryCounts: {sunglasses: 608, eyeglasses: 1582},
   auditedAt: "7 Sep 2026",
 };
